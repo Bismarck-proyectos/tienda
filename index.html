@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><meta name="theme-color" content="#6b1436"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mi Tienda</title>
+<!--
+=== BASE DE DATOS (Supabase, gratis) ===
+1) Crea un proyecto en supabase.com  2) SQL Editor > pega y ejecuta:
+
+create table settings(id int primary key, name text, logo text, pass_hash text, master_hash text, active boolean default true, created_at timestamptz default now());
+create table products(id uuid primary key default gen_random_uuid(), name text, category text, description text, price numeric, image text, created_at timestamptz default now());
+create table orders(id uuid primary key default gen_random_uuid(), name text, phone text, items jsonb, total numeric, status text default 'nuevo', created_at timestamptz default now());
+alter table settings enable row level security; alter table products enable row level security; alter table orders enable row level security;
+create policy "a" on settings for all using(true) with check(true);
+create policy "a" on products for all using(true) with check(true);
+create policy "a" on orders for all using(true) with check(true);
+
+3) Project Settings > API: copia "Project URL" y "anon public key" abajo (SB_URL, SB_KEY).
+4) Sube este archivo como index.html a GitHub y activa Pages (Settings > Pages).
+Cliente: tusitio.github.io/repo/   ·   Admin: tusitio.github.io/repo/#admin
+Sin SB_URL/SB_KEY funciona en modo demo (datos solo en este navegador).
+-->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:radial-gradient(circle at top,#5c1230,#2b0616 70%) fixed;color:#ffe4ef;min-height:100vh}
+header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:linear-gradient(90deg,#3d0a1f,#6b1436);border-bottom:2px solid #ff4d8d;box-shadow:0 2px 16px #ff4d8d55;position:sticky;top:0;z-index:5}
+.lg{display:flex;align-items:center;gap:10px;font-size:1.2rem;text-shadow:0 0 10px #ff4d8d}.lg img{height:38px;border-radius:8px}.lg .i{width:1.6em;height:1.6em}
+button{padding:8px 14px;border:1px solid #ff4d8d66;border-radius:10px;background:#4a0f2a;color:#ffd1e3;cursor:pointer;font-size:.95rem;margin:3px;transition:.2s}
+button:hover{box-shadow:0 0 12px #ff4d8d99;transform:translateY(-1px)}
+button.on,button.pri{background:linear-gradient(135deg,#ff4d8d,#c2185b);color:#fff;border-color:transparent}button.pri{padding:11px 18px;font-weight:600}
+button.on .i,button.pri .i{stroke:#fff;animation:none}
+nav{display:flex;gap:4px;overflow-x:auto;padding:10px 12px}nav button{white-space:nowrap}
+.g{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;padding:12px}
+.card,.card2,.bx{background:linear-gradient(160deg,#4d1030,#2f0819);border:1px solid #ff4d8d44;box-shadow:0 2px 10px #0006}
+.card{border-radius:14px;padding:10px;text-align:center;transition:.25s}.card:hover{box-shadow:0 0 20px #ff4d8d66;transform:translateY(-3px)}
+.card img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px;background:#2b0616;cursor:pointer}
+.card h3{margin:8px 0 2px;font-size:1rem}.pr{color:#ff8fbf;font-weight:700;margin:2px;text-shadow:0 0 8px #ff4d8d88}
+.box{max-width:820px;margin:14px auto;padding:14px}.card2{border-radius:14px;padding:12px;margin:10px 0}
+input,textarea{width:100%;padding:10px;margin:5px 0;border:1px solid #ff4d8d66;border-radius:10px;font:inherit;background:#2b0616;color:#ffe4ef;color-scheme:dark}textarea{min-height:90px}::placeholder{color:#c98aa5}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #ff4d8d33}hr{border:0;border-top:1px solid #ff4d8d44}small{color:#f0a9c6}
+.th{width:48px;height:48px;object-fit:cover;border-radius:8px}.pv{max-width:180px;border-radius:10px;margin:6px 0}
+.c{text-align:center;padding:30px}.tag{padding:2px 8px;border-radius:8px;font-size:.75rem;background:#fbcfe8;color:#4a0f2a}.tag.listo{background:#ff4d8d;color:#fff}
+.bd{position:fixed;inset:0;background:#000b;display:flex;align-items:center;justify-content:center;z-index:20;padding:12px}
+.bx{border-radius:16px;padding:18px;max-width:460px;width:100%;max-height:90vh;overflow:auto;position:relative;box-shadow:0 0 34px #ff4d8d66}
+.x{position:absolute;right:8px;top:8px}.big{width:100%;border-radius:12px}footer{text-align:center;padding:20px;font-size:.8rem}footer a{color:#ff8fbf}
+.i{width:1.15em;height:1.15em;vertical-align:-.2em;stroke:url(#pg);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 0 4px #ff4d8d);animation:gl 2.6s ease-in-out infinite}
+@keyframes gl{50%{filter:drop-shadow(0 0 10px #ff4d8d) drop-shadow(0 0 3px #ff8fbf)}}
+button:hover .i{transform:scale(1.2) rotate(-6deg)}.i{transition:transform .2s}
+</style></head><body>
+<svg width="0" height="0" style="position:absolute"><defs><linearGradient id="pg" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="24" y2="24"><stop offset="0" stop-color="#ffb3d1"/><stop offset=".55" stop-color="#ff4d8d"/><stop offset="1" stop-color="#8e0f45"/></linearGradient></defs></svg>
+<div id="app"></div><div id="md"></div>
+<script>
+const SB_URL="https://ljtovekrzbjiybwrtiya.supabase.co",SB_KEY="sb_publishable_bmoEyOIVdJFJZmcsLgLDwQ_p92-gWQa";           // <-- pega aquí tus datos de Supabase
+const CUR="₡";                        // moneda (cámbiala si quieres)
+const sb=SB_URL?supabase.createClient(SB_URL,SB_KEY):null;
+const $=s=>document.querySelector(s),app=$('#app');
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=n=>CUR+Number(n||0).toLocaleString('es-CR');
+const LS=(k,d)=>JSON.parse(localStorage.getItem(k)||JSON.stringify(d));
+const sha=async s=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)))].map(b=>b.toString(16).padStart(2,'0')).join('');
+const load=src=>new Promise(r=>{const i=new Image();i.onload=()=>r(i);i.src=src});
+const IC={
+bag:'<path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/>',
+mail:'<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>',
+gift:'<polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>',
+chart:'<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>',
+set:'<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>',
+lock:'<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+heart:'<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>',
+trash:'<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/>',
+edit:'<path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z"/>',
+check:'<path d="M22 11.1V12a10 10 0 1 1-5.9-9.1"/><polyline points="22 4 12 14 9 11"/>',
+zap:'<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
+dl:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+wa:'<path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.2A8.4 8.4 0 1 1 21 11.5z"/>'};
+const I=n=>`<svg class="i" viewBox="0 0 24 24">${IC[n]}</svg>`;
+/* ---------- Capa de datos: Supabase o localStorage ---------- */
+const db={
+ async list(t){if(sb){const{data}=await sb.from(t).select('*').order('created_at');return data||[]}return LS('d_'+t,[])},
+ async save(t,o){if(sb){const{data,error}=await sb.from(t).upsert(o).select().single();if(error){alert(error.message);throw error}return data}
+  const a=LS('d_'+t,[]);if(!o.id){o.id=crypto.randomUUID();o.created_at=new Date().toISOString()}
+  const i=a.findIndex(x=>x.id==o.id);i>=0?a[i]={...a[i],...o}:a.push(o);localStorage.setItem('d_'+t,JSON.stringify(a));return o},
+ async del(t,id){if(sb)await sb.from(t).delete().eq('id',id);else localStorage.setItem('d_'+t,JSON.stringify(LS('d_'+t,[]).filter(x=>x.id!=id)))}
+};
+let S={},P=[],O=[],cart=LS('cart',{}),cats=[],cat='Todas',T='orders',cur={},M=new Date().toISOString().slice(0,7),ST=[],CH=[];
+const modal=h=>$('#md').innerHTML=`<div class=bd onclick="if(event.target==this)closeM()"><div class=bx><button class=x onclick=closeM()>✕</button>${h}</div></div>`;
+const closeM=()=>$('#md').innerHTML='';
+const head=r=>`<header><div class=lg>${S.logo?`<img src="${S.logo}">`:I('gift')}<b>${esc(S.name)}</b></div><div>${r||''}</div></header>`;
+async function init(){
+ S=(await db.list('settings'))[0];
+ if(!S)S=await db.save('settings',{id:1,name:'Mi Tienda',logo:'',pass_hash:await sha('12345'),master_hash:'82ac96a47ad943f8bf36e4f85c307f75806c7f99254155c77d6622c03ec821ed',active:true});
+ route();
+}
+const route=()=>location.hash=='#admin'?admin():shop(true);
+onhashchange=route;
+/* ---------- VENTANA CLIENTE ---------- */
+async function shop(reload){
+ if(reload)P=await db.list('products');
+ if(!S.active){app.innerHTML=head()+`<p class=c>${I('lock')} La tienda está cerrada temporalmente.</p>`;return}
+ cats=['Todas',...new Set(P.map(p=>p.category).filter(Boolean))];
+ const n=Object.values(cart).reduce((a,b)=>a+b,0);
+ app.innerHTML=head(`<button class=pri onclick=openCart()>${I('bag')} ${n}</button>`)+
+ `<nav>${cats.map((c,i)=>`<button class="${c==cat?'on':''}" onclick="cat=cats[${i}];shop()">${esc(c)}</button>`).join('')}</nav><main class=g>`+
+ (P.filter(p=>cat=='Todas'||p.category==cat).map(p=>`<div class=card><img src="${p.image||''}" onclick="detail('${p.id}')"><h3>${esc(p.name)}</h3><p class=pr>${fmt(p.price)}</p><button class=pri onclick="add('${p.id}')">Agregar</button></div>`).join('')||'<p class=c>Aún no hay productos.</p>')+
+ `</main><footer><a href="#admin">Admin</a></footer>`;
+}
+function detail(id){const p=P.find(x=>x.id==id);modal(`<img class=big src="${p.image||''}"><h2>${esc(p.name)}</h2><p class=pr>${fmt(p.price)}</p><p style="white-space:pre-line">${esc(p.description)}</p><button class=pri onclick="add('${id}');closeM()">Agregar al carrito</button>`)}
+const saveCart=()=>localStorage.setItem('cart',JSON.stringify(cart));
+const add=id=>{cart[id]=(cart[id]||0)+1;saveCart();shop()};
+const items=()=>Object.entries(cart).map(([id,q])=>{const p=P.find(x=>x.id==id);return p&&{id,name:p.name,price:+p.price,qty:q}}).filter(Boolean);
+const total=()=>items().reduce((a,i)=>a+i.price*i.qty,0);
+function chg(id,d){cart[id]+=d;if(cart[id]<=0)delete cart[id];saveCart();shop();openCart()}
+function openCart(){const it=items();modal(it.length?`<h2>${I('bag')} Tu carrito</h2>${it.map(i=>`<div class=row><span>${esc(i.name)}<br><small>${fmt(i.price)}</small></span><span><button onclick="chg('${i.id}',-1)">−</button> ${i.qty} <button onclick="chg('${i.id}',1)">+</button></span><b>${fmt(i.price*i.qty)}</b></div>`).join('')}<h3>Total: ${fmt(total())}</h3><button class=pri onclick=checkout()>Hacer pedido</button>`:'<p class=c>El carrito está vacío</p>')}
+function checkout(){modal(`<h2>Datos del pedido</h2>${items().map(i=>`<div class=row><span>${i.qty} × ${esc(i.name)}</span><span>${fmt(i.price*i.qty)}</span></div>`).join('')}<h3>Total a pagar: ${fmt(total())}</h3><input id=cn placeholder="Tu nombre"><input id=cp type=tel placeholder="Tu celular (WhatsApp)"><button class=pri onclick=send()>Enviar pedido</button>`)}
+async function send(){
+ const name=$('#cn').value.trim(),phone=$('#cp').value.replace(/\D/g,'');
+ if(!name||phone.length<8)return alert('Escribe tu nombre y un celular válido');
+ await db.save('orders',{name,phone,items:items(),total:total(),status:'nuevo'});
+ cart={};saveCart();shop();modal(`<h2>${I('check')} ¡Pedido enviado!</h2><p>Te avisaremos por WhatsApp cuando esté listo para recoger.</p>`);
+}
+/* ---------- VENTANA ADMIN ---------- */
+async function login(){if(await sha($('#pw').value)==S.pass_hash){sessionStorage.adm=1;admin()}else alert('Contraseña incorrecta')}
+async function admin(){
+ if(sessionStorage.adm!=1){app.innerHTML=head()+`<div class=box><h2>${I('lock')} Acceso administrador</h2><input id=pw type=password placeholder="Contraseña" onkeydown="if(event.key=='Enter')login()"><button class=pri onclick=login()>Entrar</button></div>`;return}
+ const body=await({orders:vOrders,prods:vProds,stats:vStats,set:vSet}[T])();
+ app.innerHTML=head(`<button onclick="sessionStorage.adm=0;admin()">Salir</button>`)+`<nav>${[['orders',I('mail')+' Pedidos'],['prods',I('gift')+' Productos'],['stats',I('chart')+' Estadísticas'],['set',I('set')+' Ajustes']].map(([k,l])=>`<button class="${T==k?'on':''}" onclick="T='${k}';admin()">${l}</button>`).join('')}</nav><main class=box>${body}</main>`;
+ if(T=='stats')drawCharts();
+}
+setInterval(()=>{if(location.hash=='#admin'&&sessionStorage.adm==1&&T=='orders'&&!$('#md').innerHTML)admin()},15000);
+/* Pedidos */
+async function vOrders(){
+ O=(await db.list('orders')).reverse();
+ return `<h2>Pedidos</h2>`+(O.map(o=>`<div class=card2><b>${esc(o.name)}</b> · ${esc(o.phone)} <span class="tag ${o.status}">${o.status}</span><br><small>${new Date(o.created_at).toLocaleString('es-CR')}</small>${o.items.map(i=>`<div class=row><span>${i.qty} × ${esc(i.name)}</span><span>${fmt(i.price*i.qty)}</span></div>`).join('')}<h3>Total: ${fmt(o.total)}</h3><button class=pri onclick="ready('${o.id}')">${I('wa')} Listo · avisar por WhatsApp</button><button onclick="delOrder('${o.id}')">${I('trash')}</button></div>`).join('')||'<p class=c>Sin pedidos todavía.</p>');
+}
+function ready(id){
+ const o=O.find(x=>x.id==id),ph=o.phone.length==8?'506'+o.phone:o.phone;
+ const msg=`Hola ${o.name}, ¡tu pedido en ${S.name} está listo para ser recogido! ✅\n\n🧾 Comprobante #${o.id.slice(0,6).toUpperCase()}\n${o.items.map(i=>`• ${i.qty} × ${i.name} — ${fmt(i.price*i.qty)}`).join('\n')}\n\n💰 Total: ${fmt(o.total)}\n\n¡Gracias por tu compra!`;
+ window.open(`https://wa.me/${ph}?text=${encodeURIComponent(msg)}`,'_blank');
+ db.save('orders',{id:o.id,status:'listo'}).then(admin);
+}
+async function delOrder(id){if(confirm('¿Eliminar este pedido?')){await db.del('orders',id);admin()}}
+/* Productos */
+const rd=()=>{cur={...cur,name:$('#pn').value,category:$('#pc').value,price:$('#pp').value,description:$('#pd').value}};
+async function vProds(){
+ P=await db.list('products');
+ return `<h2>${cur.id?'Editar':'Nuevo'} producto</h2><input id=pn placeholder="Nombre" value="${esc(cur.name)}"><input id=pc placeholder="Categoría" value="${esc(cur.category)}"><input id=pp type=number placeholder="Precio" value="${esc(cur.price)}"><textarea id=pd placeholder="Descripción / detalles importantes">${esc(cur.description)}</textarea><input type=file accept="image/*" onchange="pickImg(this)">${cur.image?`<img class=pv src="${cur.image}">`:''}<div><button onclick=enh()>${I('zap')} Mejorar foto (IA)</button><button onclick=aiDesc()>${I('zap')} Descripción con IA</button><button class=pri onclick=saveP()>Guardar</button>${cur.id?'<button onclick="cur={};admin()">Cancelar</button>':''}</div><hr>`+
+ P.map(p=>`<div class=row><img class=th src="${p.image||''}"><span style="flex:1">${esc(p.name)}<br><small>${esc(p.category)} · ${fmt(p.price)}</small></span><button onclick="editP('${p.id}')">${I('edit')}</button><button onclick="delP('${p.id}')">${I('trash')}</button></div>`).join('');
+}
+async function resize(file,max){const im=await load(URL.createObjectURL(file)),k=Math.min(1,max/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=im.width*k;c.height=im.height*k;c.getContext('2d').drawImage(im,0,0,c.width,c.height);return c.toDataURL('image/jpeg',.82)}
+async function pickImg(el){if(!el.files[0])return;rd();cur.image=await resize(el.files[0],800);admin()}
+async function enh(){ // mejora automática: niveles, contraste, color y brillo
+ rd();if(!cur.image)return alert('Primero sube una foto');
+ const im=await load(cur.image),c=document.createElement('canvas');c.width=im.width;c.height=im.height;const x=c.getContext('2d');x.drawImage(im,0,0);
+ const d=x.getImageData(0,0,c.width,c.height),a=d.data;
+ for(let ch=0;ch<3;ch++){const h=new Array(256).fill(0);for(let i=ch;i<a.length;i+=4)h[a[i]]++;const t=a.length/400;let lo=0,hi=255,s=0;
+  for(;lo<255&&(s+=h[lo])<t;lo++);s=0;for(;hi>0&&(s+=h[hi])<t;hi--);
+  if(hi-lo>20)for(let i=ch;i<a.length;i+=4)a[i]=Math.max(0,Math.min(255,(a[i]-lo)*255/(hi-lo)))}
+ x.putImageData(d,0,0);
+ const o=document.createElement('canvas');o.width=c.width;o.height=c.height;const y=o.getContext('2d');y.filter='contrast(1.08) saturate(1.2) brightness(1.04)';y.drawImage(c,0,0);
+ cur.image=o.toDataURL('image/jpeg',.85);admin();
+}
+async function aiDesc(){ // requiere API key de Anthropic guardada en Ajustes (solo en tu navegador)
+ rd();const k=localStorage.akey;if(!k)return alert('Pega tu API key de Anthropic en Ajustes');if(!cur.image)return alert('Primero sube una foto');
+ try{const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':k,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+ body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:400,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:'image/jpeg',data:cur.image.split(',')[1]}},{type:'text',text:'Eres un vendedor experto. Del producto de la foto (nombre orientativo: '+cur.name+') escribe en español una descripción breve y atractiva y 3-4 puntos destacados con viñetas •. No inventes precios ni datos que no se vean.'}]}]})});
+ const j=await r.json();cur.description=j.content[0].text;admin()}catch(e){alert('Error de IA: '+e.message)}
+}
+async function saveP(){rd();if(!cur.name||!cur.price)return alert('Nombre y precio son obligatorios');
+ const o={name:cur.name,category:cur.category||'General',price:+cur.price,description:cur.description||'',image:cur.image||''};if(cur.id)o.id=cur.id;
+ await db.save('products',o);cur={};admin()}
+const editP=id=>{cur={...P.find(x=>x.id==id)};admin()};
+async function delP(id){if(confirm('¿Eliminar producto?')){await db.del('products',id);admin()}}
+/* Estadísticas */
+async function vStats(){
+ const all=await db.list('orders');ST=all.filter(o=>o.status=='listo'&&o.created_at.slice(0,7)==M);ST.all=all.filter(o=>o.created_at.slice(0,7)==M);
+ const tot=ST.reduce((a,o)=>a+ +o.total,0);
+ return `<h2>Estadísticas de ventas</h2><input type=month value="${M}" onchange="M=this.value;admin()"><p>Pedidos entregados: <b>${ST.length}</b> · Vendido: <b>${fmt(tot)}</b></p><canvas id=c1></canvas><canvas id=c2></canvas><button class=pri onclick=pdf()>${I('dl')} Descargar PDF</button><button onclick=delMonth()>${I('trash')} Eliminar mes y empezar uno nuevo</button><p><small>Solo cuentan los pedidos marcados como "listo".</small></p>`;
+}
+function agg(){const day={},pr={};ST.forEach(o=>{const d=o.created_at.slice(8,10);day[d]=(day[d]||0)+ +o.total;o.items.forEach(i=>{pr[i.name]=pr[i.name]||{q:0,t:0};pr[i.name].q+=i.qty;pr[i.name].t+=i.qty*i.price})});return{day,pr}}
+function drawCharts(){
+ Chart.defaults.color='#ffd1e3';Chart.defaults.borderColor='#ff4d8d33';CH.forEach(c=>c.destroy());const{day,pr}=agg(),k=Object.keys(day).sort(),n=Object.keys(pr);
+ CH=[new Chart($('#c1'),{type:'bar',data:{labels:k,datasets:[{label:'Ventas por día',data:k.map(x=>day[x]),backgroundColor:'#ff4d8d'}]},options:{animation:false}}),
+ new Chart($('#c2'),{type:'bar',data:{labels:n,datasets:[{label:'Unidades vendidas',data:n.map(x=>pr[x].q),backgroundColor:'#f9a8d4'}]},options:{indexAxis:'y',animation:false}})];
+}
+const bg=id=>{const q=$('#'+id),c=document.createElement('canvas');c.width=q.width;c.height=q.height;const x=c.getContext('2d');x.fillStyle='#3b0a1e';x.fillRect(0,0,c.width,c.height);x.drawImage(q,0,0);return c.toDataURL('image/png')};
+function pdf(){
+ const{jsPDF}=window.jspdf,d=new jsPDF(),{pr}=agg(),tot=ST.reduce((a,o)=>a+ +o.total,0),C='CRC ';let y=15;
+ const line=(t,b)=>{if(y>280){d.addPage();y=15}d.setFont('helvetica',b?'bold':'normal');d.text(String(t),14,y);y+=6};
+ d.setFontSize(16);line(S.name+' - Ventas '+M,1);d.setFontSize(11);line('Pedidos entregados: '+ST.length+'   Total vendido: '+C+tot.toLocaleString('es-CR'),1);y+=2;
+ ['c1','c2'].forEach(id=>{d.addImage(bg(id),'PNG',14,y,180,65);y+=70});
+ d.addPage();y=15;line('Detalle por producto',1);Object.entries(pr).forEach(([n,v])=>line(n.slice(0,50)+'  x'+v.q+'  '+C+v.t.toLocaleString('es-CR')));
+ y+=4;line('Pedidos del mes',1);ST.forEach(o=>line(o.created_at.slice(0,10)+'  '+o.name.slice(0,25)+'  '+o.phone+'  '+C+(+o.total).toLocaleString('es-CR')));
+ d.save('ventas-'+M+'.pdf');
+}
+async function delMonth(){
+ if(!confirm('Se eliminarán TODOS los pedidos de '+M+'. ¿Ya descargaste el PDF?'))return;
+ for(const o of ST.all)await db.del('orders',o.id);admin();
+}
+/* Ajustes */
+async function vSet(){return `<h2>Ajustes</h2><div class=card2><h3>Nombre y logo</h3><input id=sn value="${esc(S.name)}"><input type=file accept="image/*" onchange="setLogo(this)">${S.logo?`<img class=pv src="${S.logo}">`:''}<button class=pri onclick=saveName()>Guardar nombre</button></div>
+<div class=card2><h3>Cambiar contraseña</h3><input id=p0 type=password placeholder="Contraseña actual"><input id=p1 type=password placeholder="Nueva (mínimo 8 caracteres)"><input id=p2 type=password placeholder="Repite la nueva"><button class=pri onclick=chPass()>Cambiar</button></div>
+<div class=card2><h3>Llave maestra · cuenta ${S.active?I('heart')+' ACTIVA':'INACTIVA'}</h3><button class=pri onclick=toggle()>${S.active?'Desactivar':'Activar'} tienda</button><input id=m1 type=password placeholder="Cambiar llave maestra: nueva"><button onclick=chMaster()>Cambiar llave</button></div>
+<div class=card2><h3>IA (descripciones)</h3><input id=ak type=password placeholder="API key de Anthropic (se guarda solo en este navegador)" value="${esc(localStorage.akey||'')}"><button onclick="localStorage.akey=$('#ak').value;alert('Guardada')">Guardar</button></div>`}
+async function saveName(){S.name=$('#sn').value||'Mi Tienda';S=await db.save('settings',S);admin()}
+async function setLogo(el){if(el.files[0]){S.logo=await resize(el.files[0],300);S=await db.save('settings',S);admin()}}
+async function chPass(){const a=$('#p0').value,b=$('#p1').value;
+ if(await sha(a)!=S.pass_hash)return alert('Contraseña actual incorrecta');
+ if(b.length<8||b!=$('#p2').value||b=='12345')return alert('La nueva debe tener 8+ caracteres y coincidir');
+ S.pass_hash=await sha(b);S=await db.save('settings',S);alert('Contraseña cambiada ✅');admin()}
+async function toggle(){const k=prompt('Llave maestra:');if(!k)return;if(await sha(k)!=S.master_hash)return alert('Llave incorrecta');S.active=!S.active;S=await db.save('settings',S);admin()}
+async function chMaster(){const k=prompt('Llave maestra actual:');if(!k||await sha(k)!=S.master_hash)return alert('Llave incorrecta');const n=$('#m1').value;if(n.length<6)return alert('Mínimo 6 caracteres');S.master_hash=await sha(n);S=await db.save('settings',S);alert('Llave cambiada ✅')}
+init();
+</script></body></html>
